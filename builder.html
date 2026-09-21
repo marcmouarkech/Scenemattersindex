@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scene Matters CMS Builder</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f4f4f4; color: #111; margin: 0; padding: 2rem; }
+    .container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
+    .panel { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    h1, h2, h3 { margin-top: 0; }
+    button { background: #111; color: #fff; border: none; padding: 0.6rem 1.2rem; cursor: pointer; font-weight: 600; border-radius: 4px; }
+    button:hover { background: #333; }
+    .btn-sync { background: #0056b3; }
+    .btn-success { background: #1e7e34; padding: 1rem 2rem; font-size: 1rem; }
+    .btn-danger { background: #c5221f; padding: 0.4rem 0.8rem; font-size: 0.8rem;}
+    .btn-import { background: #777; }
+    .btn-secondary { background: #e0e0e0; color: #111; }
+    .btn-small { padding: 0.2rem 0.4rem; font-size: 0.65rem; }
+    .form-group { margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.8rem; font-weight: 700; margin-bottom: 0.4rem; color: #555; text-transform: uppercase;}
+    textarea, select, input { width: 100%; padding: 0.6rem; border: 1px solid #ccc; border-radius: 4px; font-family: 'Inter'; resize: vertical; box-sizing: border-box;}
+    .card { border: 1px solid #e0e0e0; background: #fafafa; border-radius: 4px; overflow: hidden; transition: transform 0.2s;}
+    .card.dragging { opacity: 0.5; border: 2px dashed #111; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: #eaeaea; cursor: pointer; }
+    .drag-handle { cursor: grab; margin-right: 1rem; font-size: 1.2rem; user-select: none; }
+    .card-body { padding: 1.5rem; border-top: 1px solid #e0e0e0; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .tag { display: inline-block; background: #111; color: #fff; font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 12px; margin-right: 0.5rem; margin-top: 0.5rem; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; position: sticky; top: 0; background: #f4f4f4; padding: 1rem 0; z-index: 100; border-bottom: 1px solid #ddd;}
+    .block-type-badge { font-size: 0.65rem; background: #333; color: #fff; padding: 0.2rem 0.6rem; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.05em;}
+    .inter-block-ui { display: flex; justify-content: space-between; align-items: center; background: #e9e9e9; padding: 0.5rem 1rem; border-radius: 4px; margin: 0.5rem 0 1.5rem 0; border: 1px dashed #ccc;}
+    .transfer-ui { display: flex; gap: 1rem; align-items: stretch; }
+    .transfer-col { flex: 1; border: 1px solid #dcdcdc; border-radius: 4px; background: #fff; display: flex; flex-direction: column; overflow: hidden;}
+    .transfer-head { background: #f0f0f0; padding: 0.5rem; font-size: 0.7rem; font-weight: 700; border-bottom: 1px solid #dcdcdc; text-transform: uppercase; color: #666;}
+    .transfer-list { flex: 1; min-height: 120px; max-height: 250px; overflow-y: auto; padding: 0.5rem; list-style: none; margin: 0; display: flex; flex-direction: column; gap: 4px;}
+    .transfer-item { display: flex; justify-content: space-between; align-items: center; background: #f8f8f8; border: 1px solid #eaeaea; padding: 0.4rem 0.5rem; border-radius: 4px; font-size: 0.75rem;}
+  </style>
+</head>
+<body>
+
+<div id="app" class="container">
+  
+  <div class="top-bar">
+    <div style="display: flex; align-items: center;">
+      <h2>Scene Matters CMS</h2>
+      <div v-if="currentFileName" class="file-indicator">Editing: {{ currentFileName }}</div>
+    </div>
+    <div style="display: flex; gap: 1rem; align-items: center;">
+      <button class="btn-danger" @click="resetBuilder">Reset Builder</button>
+      <button class="btn-import" @click="importFromFile">Open Data File (.js)</button>
+      <button class="btn-secondary" @click="exportNewFile">Save as New File (.js)</button>
+      <button class="btn-success" @click="saveFile" :disabled="!fileHandle">Save & Overwrite</button>
+    </div>
+  </div>
+  
+  <div class="panel" v-if="fileHandle || projects.length > 0">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+      <div><h2>1. Projects Database</h2></div>
+      <div>
+        <label class="btn-sync" style="display: inline-block; padding: 0.6rem 1.2rem; border-radius: 4px; cursor: pointer;">
+          + Sync Images Folder
+          <input type="file" webkitdirectory directory multiple @change="syncImages" style="display:none;" />
+        </label>
+      </div>
+    </div>
+    
+    <div v-for="(proj, index) in projects" :key="proj.id" class="card" style="margin-bottom: 1rem;">
+      <div class="card-header" @click="activeProject = activeProject === index ? null : index">
+        <strong style="font-size: 1.1rem;">{{ proj.title || 'Untitled Project' }}</strong>
+        <button class="btn-danger" @click.stop="removeProject(index)">Remove</button>
+      </div>
+      
+      <div v-show="activeProject === index" class="card-body">
+        <div class="form-group"><label>PROJECT Title (Exact Match)</label><textarea rows="1" v-model="proj.title"></textarea></div>
+        <div class="form-group"><label>Folder Name</label><textarea rows="1" v-model="proj.folder"></textarea></div>
+        
+        <div class="form-group" style="grid-column: span 2;"><label>Images</label><textarea rows="2" v-model="proj.images"></textarea></div>
+
+        <div class="form-group" style="grid-column: span 2;">
+          <label>CLIENT / INSTITUTION</label>
+          <div v-for="(client, cIdx) in proj.clients" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <input type="text" v-model="client.name" placeholder="Client Name" style="flex: 1;">
+            <input type="text" v-model="client.url" placeholder="URL (Optional)" style="flex: 1;">
+            <button class="btn-danger" @click.prevent="removeClient(proj, cIdx)" v-if="proj.clients.length > 1">X</button>
+          </div>
+          <button class="btn-secondary" @click.prevent="addClient(proj)">+ Add Client</button>
+        </div>
+
+        <div class="form-group"><label>LOCATION</label><textarea rows="1" v-model="proj.location"></textarea></div>
+        <div class="form-group"><label>YEAR</label><textarea rows="1" v-model="proj.year"></textarea></div>
+        <div class="form-group" style="grid-column: span 2;"><label>STATUS</label><textarea rows="1" v-model="proj.status"></textarea></div>
+        <div class="form-group" style="grid-column: span 2;"><label>EXHIBITION</label><textarea rows="1" v-model="proj.exhibition"></textarea></div>
+
+        <div class="form-group" style="grid-column: span 2;">
+          <label>MATTERS (DOMAINS)</label>
+          <div class="transfer-ui">
+            <div class="transfer-col"><div class="transfer-head">Available</div><ul class="transfer-list"><li class="transfer-item" v-for="d in availableDomains(proj)">{{d}} <button class="btn-success btn-small" @click.prevent="addDomain(proj, d)">+ Add</button></li></ul></div>
+            <div class="transfer-col"><div class="transfer-head">Selected</div><ul class="transfer-list"><li class="transfer-item" v-for="(d, i) in proj.domains">{{d}}<div class="transfer-actions"><button class="btn-secondary btn-small" @click.prevent="moveUp(proj.domains, i)">↑</button><button class="btn-secondary btn-small" @click.prevent="moveDown(proj.domains, i)">↓</button><button class="btn-danger btn-small" @click.prevent="proj.domains.splice(i, 1)">x</button></div></li></ul></div>
+          </div>
+        </div>
+
+        <div class="form-group" style="grid-column: span 2;">
+          <label>TYPOLOGIES</label>
+          <div class="transfer-ui">
+            <div class="transfer-col"><div class="transfer-head">Available</div><ul class="transfer-list"><li class="transfer-item" v-for="t in availableTypologies(proj)">{{t}} <button class="btn-success btn-small" @click.prevent="addTypology(proj, t)">+ Add</button></li></ul></div>
+            <div class="transfer-col"><div class="transfer-head">Selected</div><ul class="transfer-list"><li class="transfer-item" v-for="(t, i) in proj.typologies">{{t}}<div class="transfer-actions"><button class="btn-secondary btn-small" @click.prevent="moveUp(proj.typologies, i)">↑</button><button class="btn-secondary btn-small" @click.prevent="moveDown(proj.typologies, i)">↓</button><button class="btn-danger btn-small" @click.prevent="proj.typologies.splice(i, 1)">x</button></div></li></ul></div>
+          </div>
+        </div>
+
+        <div class="form-group" style="grid-column: span 2;">
+          <label>SERVICES</label>
+          <div class="transfer-ui">
+            <div class="transfer-col"><div class="transfer-head">Available</div><ul class="transfer-list"><li class="transfer-item" v-for="s in availableServices(proj)">{{s}} <button class="btn-success btn-small" @click.prevent="proj.services.push(s)">+ Add</button></li></ul></div>
+            <div class="transfer-col"><div class="transfer-head">Selected</div><ul class="transfer-list"><li class="transfer-item" v-for="(s, i) in proj.services">{{s}}<div class="transfer-actions"><button class="btn-secondary btn-small" @click.prevent="moveUp(proj.services, i)">↑</button><button class="btn-secondary btn-small" @click.prevent="moveDown(proj.services, i)">↓</button><button class="btn-danger btn-small" @click.prevent="proj.services.splice(i, 1)">x</button></div></li></ul></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>PARTNERS INVOLVED</label><textarea rows="3" v-model="proj.partners"></textarea>
+          <label style="margin-top: 0.5rem;">As part of (Company)</label><textarea rows="1" v-model="proj.asPartOf"></textarea>
+          <label style="margin-top: 0.5rem;">As part of URL</label><textarea rows="1" v-model="proj.asPartOfUrl"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>COLLABORATORS</label><textarea rows="3" v-model="proj.collaborators"></textarea>
+          <label style="margin-top: 0.5rem;">With the participation of</label><textarea rows="2" v-model="proj.participation"></textarea>
+          <label style="margin-top: 0.5rem;">Project team</label><textarea rows="2" v-model="proj.projectTeam"></textarea>
+        </div>
+        
+        <div class="form-group" style="grid-column: span 2;"><label>RECOGNITION</label><textarea rows="2" v-model="proj.recognition"></textarea></div>
+      </div>
+    </div>
+    <button @click="addProject">+ Add Project</button>
+  </div>
+
+  <div class="panel" v-if="fileHandle || projects.length > 0">
+    <h2>2. Page Flow (Layout Builder)</h2>
+    
+    <div class="inter-block-ui" style="border: none; background: #e0e0e0; margin-top: 0;">
+      <div class="add-menu">
+        <strong style="font-size: 0.8rem; margin-right: 0.5rem;">+ Insert Block at Top:</strong>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'kicker')">Kicker</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'headline')">Headline</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'typology')">Typology</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'typology-standstill')">Standstill</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'independent-text')">Text Cols</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'independent-carousel')">Carousel</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'hero-image')">Image</button>
+        <button class="btn-secondary btn-small" @click="addBlockAt(0, 'hero-video')">Video</button>
+        <button class="btn-secondary btn-small" style="background: #ccc;" @click="addBlockAt(0, 'visual-layout')">Visual Layout</button>
+      </div>
+    </div>
+
+    <div v-for="(block, index) in blocks" :key="block.id" @dragover.prevent @drop="dropBlock(index)">
+         
+      <div class="card" style="display: block; margin-bottom: 0;" :class="{ dragging: draggedIndex === index }">
+        <div class="card-header" style="background: transparent; border-bottom: 2px solid #111; padding: 0 0 1rem 0;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="drag-handle" draggable="true" @dragstart="dragStart(index, $event)" @dragend="dragEnd">☰</span>
+            <select v-model="block.type" @change="onBlockTypeChange(block)" style="width: auto; padding: 0.2rem 0.6rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; background: #333; color: #fff; border: none; border-radius: 12px; cursor: pointer;">
+              <option value="kicker">kicker</option>
+              <option value="headline">headline</option>
+              <option value="typology">typology</option>
+              <option value="typology-standstill">typology-standstill</option>
+              <option value="independent-text">independent-text</option>
+              <option value="independent-carousel">independent-carousel</option>
+              <option value="hero-image">hero-image</option>
+              <option value="hero-video">hero-video</option>
+              <option value="visual-layout">visual-layout</option>
+            </select>
+          </div>
+          <button class="btn-danger" @click.prevent="removeBlock(index)">Remove</button>
+        </div>
+
+        <div style="padding-top: 1.5rem;">
+          
+          <div v-if="['kicker', 'headline', 'typology', 'typology-standstill'].includes(block.type)">
+            <div class="form-group"><label>Text Content (Auto-balanced)</label><textarea rows="2" v-model="block.textRaw"></textarea></div>
+          </div>
+          
+          <div v-if="block.type === 'independent-text'">
+            <div class="form-group"><label>Body Text</label><textarea rows="5" v-model="block.textRaw"></textarea>
+              <div v-if="getDetectedProjects(block.textRaw).length > 0"><span class="tag" v-for="fp in getDetectedProjects(block.textRaw)">Detected: {{ fp.title }}</span></div>
+            </div>
+            <div class="form-group" style="display:flex; gap:1rem;">
+              <div style="flex:1;"><label>Columns Span</label>
+                <select v-model.number="block.span" @change="if(block.span + block.startCol > 4) block.startCol = 4 - block.span;">
+                    <option value="1">1 Column</option><option value="2">2 Columns</option><option value="3">3 Columns</option>
+                </select>
+              </div>
+              <div style="flex:1;"><label>Starting Column</label>
+                <select v-model.number="block.startCol">
+                    <option value="1">Column 1</option>
+                    <option value="1.5">Column 1.5</option>
+                    <option value="2" v-if="block.span < 3">Column 2</option>
+                    <option value="2.5" v-if="block.span < 3">Column 2.5</option>
+                    <option value="3" v-if="block.span === 1">Column 3</option>
+                </select>
+              </div>
+              <div style="flex:1;"><label>Internal Columns Format</label><select v-model.number="block.colCount"><option value="1">1 Single Block</option><option value="2" v-if="block.span >= 2">Split 2 Columns</option><option value="3" v-if="block.span === 3">Split 3 Columns</option></select></div>
+            </div>
+          </div>
+          
+          <div v-if="block.type === 'independent-carousel'">
+            <div class="form-group" style="display:flex; gap:1rem;">
+              <div style="flex:1;">
+                <label>Project Source (Auto-pulls images)</label>
+                <select v-model="block.projectId">
+                  <option value="">-- No linked project (Use manual input below) --</option>
+                  <option v-for="p in projects" :value="p.id">{{p.title}}</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" v-if="!block.projectId" style="background: #f0f0f0; padding: 1rem; border-radius: 4px;">
+              <label>Manual Folder Name (e.g. "MyFolder")</label>
+              <input type="text" v-model="block.folder" placeholder="Folder inside /Images/" style="margin-bottom: 0.5rem;">
+              <label>Manual Images (Comma separated file names e.g. "1.jpg, 2.jpg")</label>
+              <textarea rows="2" v-model="block.customImages"></textarea>
+            </div>
+            <div class="form-group" style="display:flex; gap:1rem;">
+              <div style="flex:1;"><label>Columns Span</label>
+                <select v-model.number="block.span" @change="if(block.span + block.startCol > 4) block.startCol = 4 - block.span;">
+                    <option value="1">1 Column</option><option value="2">2 Columns</option><option value="3">3 Columns</option>
+                </select>
+              </div>
+              <div style="flex:1;"><label>Starting Column</label>
+                <select v-model.number="block.startCol">
+                    <option value="1">Column 1</option>
+                    <option value="1.5">Column 1.5</option>
+                    <option value="2" v-if="block.span < 3">Column 2</option>
+                    <option value="2.5" v-if="block.span < 3">Column 2.5</option>
+                    <option value="3" v-if="block.span === 1">Column 3</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="display:flex; gap:1rem; border-top: 1px dotted #ccc; padding-top: 1rem;">
+              <div style="flex:1;"><label>Extend Top (x Gutter)</label><input type="number" step="0.5" v-model="block.marginTop" placeholder="0"></div>
+              <div style="flex:1;"><label>Extend Bottom (x Gutter)</label><input type="number" step="0.5" v-model="block.marginBottom" placeholder="0"></div>
+            </div>
+          </div>
+
+          <div v-if="['hero-image', 'hero-video'].includes(block.type)">
+             <div v-if="block.type === 'hero-image'" class="form-group"><label>Image File Path</label><input type="text" v-model="block.image"></div>
+             <div v-if="block.type === 'hero-video'">
+                <div class="form-group"><label>Raw Video URL (.mp4)</label><input type="text" v-model="block.videoUrl"></div>
+                <div class="form-group"><label>OR Embed Code (WebGL/YouTube)</label><textarea rows="3" v-model="block.embedCode"></textarea></div>
+             </div>
+             <div class="form-group" style="display:flex; gap:1rem;">
+              <div style="flex:1;"><label>Columns Span</label>
+                <select v-model.number="block.span" @change="if(block.span + block.startCol > 4) block.startCol = 4 - block.span;">
+                    <option value="1">1 Column</option><option value="2">2 Columns</option><option value="3">3 Columns</option>
+                </select>
+              </div>
+              <div style="flex:1;"><label>Starting Column</label>
+                <select v-model.number="block.startCol">
+                    <option value="1">Column 1</option>
+                    <option value="1.5">Column 1.5</option>
+                    <option value="2" v-if="block.span < 3">Column 2</option>
+                    <option value="2.5" v-if="block.span < 3">Column 2.5</option>
+                    <option value="3" v-if="block.span === 1">Column 3</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="block.type === 'visual-layout'">
+            <div class="form-group">
+               <label>Body Text (Strictly fills physical columns 1, 2, 3 left-to-right)</label>
+               <textarea rows="6" v-model="block.textRaw"></textarea>
+               <div v-if="getDetectedProjects(block.textRaw).length > 0"><span class="tag" v-for="fp in getDetectedProjects(block.textRaw)">Detected: {{ fp.title }}</span></div>
+            </div>
+            
+            <div class="form-group" v-if="getDetectedProjects(block.textRaw).length > 0">
+              <label>Layout Structure</label>
+              <select v-model="block.layout">
+                <option value="" disabled>Select Layout...</option>
+                <option v-for="l in getValidLayouts(block.textRaw)" :value="l.id">{{ l.name }}</option>
+              </select>
+            </div>
+            <div v-else style="color: #c5221f; font-size: 0.8rem; margin-bottom: 1rem;">Mention at least 1 project in the text to select a layout.</div>
+            
+            <div class="form-group" v-if="block.layout && block.layout.startsWith('diag-')">
+              <label>Text Start Column (Optional shift right)</label>
+              <select v-model.number="block.textStartCol">
+                <option value="1">Starts in Column 1</option>
+                <option value="2">Starts in Column 2</option>
+                <option value="3">Starts in Column 3</option>
+              </select>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; background: #fff; padding: 1.5rem; border: 1px solid #ddd; border-radius: 4px;" v-if="block.layout">
+              
+              <div v-if="!block.layout.startsWith('side-text')">
+                <h4 style="margin-top:0; border-bottom: 2px solid #111; padding-bottom: 0.5rem;">Left Container Image</h4>
+                <div class="form-group">
+                  <label>Project Carousel</label>
+                  <select v-model="block.proj1Id"><option value="" disabled>Select project...</option><option v-for="p in getDetectedProjects(block.textRaw)" :value="p.id">{{p.title}}</option></select>
+                  
+                  <div style="margin-top: 0.5rem;" v-if="block.layout === 'diag-c' || block.layout === 'diag-d' || block.layout.startsWith('side-img')">
+                    <label>Extend Top (x Gutter)</label><input type="number" step="0.5" v-model="block.img1ExtTop" placeholder="0">
+                  </div>
+                  <div style="margin-top: 0.5rem;" v-if="block.layout === 'diag-a' || block.layout === 'diag-b' || block.layout.startsWith('side-img')">
+                    <label>Extend Bottom (x Gutter)</label><input type="number" step="0.5" v-model="block.img1ExtBot" placeholder="0">
+                  </div>
+                </div>
+              </div>
+              
+              <div v-if="block.layout.startsWith('diag-') || block.layout === 'side-text-img1' || block.layout === 'side-text-img2'">
+                <h4 style="margin-top:0; border-bottom: 2px solid #111; padding-bottom: 0.5rem;">Right Container Image</h4>
+                <div class="form-group">
+                  <label>Project Carousel</label>
+                  <select v-model="block.proj2Id"><option value="" disabled>Select project...</option><option v-for="p in getDetectedProjects(block.textRaw)" :value="p.id">{{p.title}}</option></select>
+                  
+                  <div style="margin-top: 0.5rem;" v-if="block.layout === 'diag-a' || block.layout === 'diag-b' || block.layout.startsWith('side-text-img')">
+                    <label>Extend Top (x Gutter)</label><input type="number" step="0.5" v-model="block.img2ExtTop" placeholder="0">
+                  </div>
+                  <div style="margin-top: 0.5rem;" v-if="block.layout === 'diag-c' || block.layout === 'diag-d' || block.layout.startsWith('side-text-img')">
+                    <label>Extend Bottom (x Gutter)</label><input type="number" step="0.5" v-model="block.img2ExtBot" placeholder="0">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="inter-block-ui">
+        <div>
+          <label style="display: inline-block; margin: 0;">Spacer block underneath:</label>
+          <select v-model.number="block.spacerBelow"><option value="0">0x Gutter</option><option value="0.5">0.5x Gutter</option><option value="1">1x Gutter</option><option value="2">2x Gutter</option><option value="4">4x Gutter</option><option value="8">8x Gutter</option></select>
+        </div>
+        <div class="add-menu">
+          <strong style="font-size: 0.75rem; margin-right: 0.5rem; color: #777;">+ Insert:</strong>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'kicker')">Kicker</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'headline')">Headline</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'typology')">Typology</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'typology-standstill')">Standstill</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'independent-text')">Text Cols</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'independent-carousel')">Carousel</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'hero-image')">Image</button>
+          <button class="btn-secondary btn-small" @click="addBlockAt(index + 1, 'hero-video')">Video</button>
+          <button class="btn-secondary btn-small" style="background: #ccc;" @click="addBlockAt(index + 1, 'visual-layout')">Visual Layout</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  const masterPillars = {
+    "Spatial": [
+      "Spatial planning", "Architectural design", "Exhibition design and scenography",
+      "Installation design", "Visitor experience design", "3D visualisation and walkthrough animations",
+      "Computational design", "Robotic and digital fabrication workflows",
+      "BIM coordination and technical documentation", "Structural and environmental simulation",
+      "Production management", "On-site supervision"
+    ],
+    "Curatorial": [
+      "Curatorial direction and concept development", "Research and content development",
+      "Exhibition development", "Public programming and audience engagement",
+      "Curation and cultural experiences design", "Interpretive planning and visitor journey curation",
+      "Artist development and management", "Artist commissioning",
+      "Open call, jury, and competition curation", "Editorial and publication development"
+    ],
+    "Visual": [
+      "Branding and visual identity design", "Graphic and visual storytelling",
+      "Environmental graphics and wayfinding systems", "Editorial and publication design",
+      "Information and presentation design", "Campaign design and visual assets",
+      "Bespoke interactive tools and web development", "Content writing and copywriting",
+      "Media relations collateral and press kits"
+    ],
+    "Strategic": [
+      "Cultural policy and creative economy strategy", "Placemaking strategy", "Institutional strategy and governance frameworks",
+      "Institutional and brand positioning", "Organisational development and operational modeling",
+      "Business development", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+      "Audience and visitor strategy", "Legacy planning", "Client representation",
+      "Logistics management and site operations", "International partnerships and cultural diplomacy",
+      "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+    ]
+  };
+
+  const matrixData = {
+    "Placemaking, Cultural Districts and Masterplans": {
+    "Spatial": [
+      "Spatial planning", "Architectural design", "Visitor experience design", "3D visualisation and walkthrough animations",
+      "BIM coordination and technical documentation"
+    ],
+    "Curatorial": [
+      "Curatorial direction and concept development", "Research and content development",
+      "Public programming and audience engagement","Curation and cultural experiences design", "Interpretive planning and visitor journey curation",
+      "Open call, jury, and competition curation"
+    ],
+    "Visual": [
+      "Branding and visual identity design", "Graphic and visual storytelling",
+      "Environmental graphics and wayfinding systems", "Campaign design and visual assets",
+      "Media relations collateral and press kits"
+    ],
+    "Strategic": [
+      "Cultural policy and creative economy strategy", "Placemaking strategy", "Institutional strategy and governance frameworks",
+      "Institutional and brand positioning", "Organisational development and operational modeling",
+      "Business development", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+      "Audience and visitor strategy", "Legacy planning", "Client representation", "International partnerships and cultural diplomacy",
+      "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+    ]
+
+    },
+    "Cultural and Civic Architecture": {
+      "Spatial": [
+        "Spatial planning", "Architectural design",
+        "Visitor experience design", "3D visualisation and walkthrough animations",
+        "Computational design", "Robotic and digital fabrication workflows",
+        "BIM coordination and technical documentation", "Structural and environmental simulation", "On-site supervision"
+      ],
+      "Curatorial": [
+        "Curatorial direction and concept development", "Public programming and audience engagement",
+        "Curation and cultural experiences design", "Interpretive planning and visitor journey curation",
+        "Open call, jury, and competition curation"
+      ],
+      "Visual": [
+        "Branding and visual identity design", "Graphic and visual storytelling",
+        "Environmental graphics and wayfinding systems",
+        "Information and presentation design"
+      ],
+      "Strategic": [
+        "Cultural policy and creative economy strategy", "Placemaking strategy", "Institutional strategy and governance frameworks",
+        "Institutional and brand positioning", "Organisational development and operational modeling",
+        "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+        "Audience and visitor strategy", "Legacy planning", "Client representation",
+        "International partnerships and cultural diplomacy",
+        "Grant acquisition and fundraising strategy"
+      ]
+    },
+    "Pavilions and Public Space Installations": {
+        "Spatial": [
+        "Spatial planning", "Architectural design",
+        "Installation design", "Visitor experience design", "3D visualisation and walkthrough animations",
+        "Computational design", "Robotic and digital fabrication workflows",
+        "BIM coordination and technical documentation", "Structural and environmental simulation",
+        "Production management", "On-site supervision"
+      ],
+      "Curatorial": [
+        "Curatorial direction and concept development", "Research and content development",
+        "Exhibition development", "Public programming and audience engagement",
+        "Curation and cultural experiences design", "Interpretive planning and visitor journey curation", "Artist commissioning",
+        "Open call, jury, and competition curation", "Editorial and publication development"
+      ],
+      "Visual": [
+        "Branding and visual identity design", "Graphic and visual storytelling",
+        "Environmental graphics and wayfinding systems", "Editorial and publication design",
+        "Information and presentation design", "Campaign design and visual assets",
+        "Media relations collateral and press kits"
+      ],
+      "Strategic": [
+        "Placemaking strategy", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+        "Audience and visitor strategy", "Legacy planning", "Client representation",
+        "Logistics management and site operations", "International partnerships and cultural diplomacy",
+        "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+      ]
+    },
+    "Exhibitions and Scenography": {
+       "Spatial": [
+          "Spatial planning", "Architectural design", "Exhibition design and scenography",
+          "Visitor experience design", "3D visualisation and walkthrough animations",
+          "BIM coordination and technical documentation", "Production management", "On-site supervision"
+        ],
+        "Curatorial": [
+          "Curatorial direction and concept development", "Research and content development",
+          "Exhibition development", "Public programming and audience engagement",
+          "Curation and cultural experiences design", "Interpretive planning and visitor journey curation",
+          "Artist development and management", "Artist commissioning",
+          "Open call, jury, and competition curation", "Editorial and publication development"
+        ],
+        "Visual": [
+          "Branding and visual identity design", "Graphic and visual storytelling",
+          "Environmental graphics and wayfinding systems", "Editorial and publication design",
+          "Information and presentation design", "Campaign design and visual assets",
+          "Content writing and copywriting", "Media relations collateral and press kits"
+        ],
+        "Strategic": [
+          "Institutional strategy and governance frameworks", "Organisational development and operational modeling",
+          "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+          "Audience and visitor strategy", "Legacy planning", "Client representation",
+          "Logistics management and site operations", "International partnerships and cultural diplomacy",
+          "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+        ]
+    },
+    "Biennales, Festivals and Public Programmes": {
+        "Spatial": [
+        "Spatial planning", "Architectural design", "Exhibition design and scenography",
+        "Installation design", "Visitor experience design", "3D visualisation and walkthrough animations",
+        "BIM coordination and technical documentation", "Production management", "On-site supervision"
+      ],
+      "Curatorial": [
+        "Curatorial direction and concept development", "Research and content development",
+        "Exhibition development", "Public programming and audience engagement",
+        "Curation and cultural experiences design", "Interpretive planning and visitor journey curation",
+        "Artist development and management", "Artist commissioning",
+        "Open call, jury, and competition curation", "Editorial and publication development"
+      ],
+      "Visual": [
+        "Branding and visual identity design", "Graphic and visual storytelling",
+        "Environmental graphics and wayfinding systems", "Editorial and publication design",
+        "Information and presentation design", "Campaign design and visual assets",
+        "Bespoke interactive tools and web development", "Content writing and copywriting",
+        "Media relations collateral and press kits"
+      ],
+      "Strategic": [
+        "Cultural policy and creative economy strategy", "Placemaking strategy", "Institutional strategy and governance frameworks",
+        "Institutional and brand positioning", "Organisational development and operational modeling",
+        "Business development", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+        "Audience and visitor strategy", "Legacy planning", "Client representation",
+        "Logistics management and site operations", "International partnerships and cultural diplomacy",
+        "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+      ]
+    },
+    "Institutional Strategy and Frameworks": {
+        "Spatial": [],
+      "Curatorial": [
+        "Curatorial direction and concept development", "Research and content development",
+        "Public programming and audience engagement",
+        "Curation and cultural experiences design", "Artist development and management", "Artist commissioning",
+        "Open call, jury, and competition curation"
+      ],
+      "Visual": [
+      ],
+      "Strategic": [
+        "Cultural policy and creative economy strategy", "Placemaking strategy", "Institutional strategy and governance frameworks",
+        "Institutional and brand positioning", "Organisational development and operational modeling",
+        "Business development", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+        "Audience and visitor strategy", "Legacy planning", "Client representation",
+        "Logistics management and site operations", "International partnerships and cultural diplomacy",
+        "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+      ]
+    },
+    
+    "Artist Management and Practice Development": {
+        "Spatial": [
+      ],
+      "Curatorial": [
+        "Curatorial direction and concept development", "Research and content development",
+        "Exhibition development", "Public programming and audience engagement",
+        "Curation and cultural experiences design",
+        "Artist development and management", "Artist commissioning",
+        "Open call, jury, and competition curation", "Editorial and publication development"
+      ],
+      "Visual": [
+        "Branding and visual identity design", "Editorial and publication design",
+        "Information and presentation design", "Content writing and copywriting",
+        "Media relations collateral and press kits"
+      ],
+      "Strategic": [
+        "Business development", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+        "Client representation", "Logistics management and site operations", "International partnerships and cultural diplomacy",
+        "Grant acquisition and fundraising strategy", "Communication strategy and dissemination planning"
+      ]
+    }, 
+    
+    "Visual Identities, Communications, and Editorial": {
+        "Spatial": [
+        "Production management", "On-site supervision"
+      ],
+      "Curatorial": [
+        "Curatorial direction and concept development", "Research and content development", "Editorial and publication development"
+      ],
+      "Visual": [
+        "Branding and visual identity design", "Graphic and visual storytelling",
+        "Environmental graphics and wayfinding systems", "Editorial and publication design",
+        "Information and presentation design", "Campaign design and visual assets",
+        "Bespoke interactive tools and web development", "Content writing and copywriting",
+        "Media relations collateral and press kits"
+      ],
+      "Strategic": [
+        "Cultural policy and creative economy strategy",
+        "Institutional and brand positioning", "Cost, timeline and feasibility studies", "Ecosystem mapping and stakeholder alignment",
+        "Client representation", "Communication strategy and dissemination planning"
+      ]
+    }
+  };
+
+  const MASTER_DOMAINS = Object.keys(masterPillars);
+  const MASTER_TYPOLOGIES = Object.keys(matrixData);
+  const MASTER_SERVICES = [...new Set(Object.values(masterPillars).flat())].sort();
+
+  const { createApp } = Vue;
+
+  createApp({
+    data() {
+      return { fileHandle: null, currentFileName: '', activeProject: 0, draggedIndex: null, projects: [], blocks: [] }
+    },
+    computed: {
+      generatedJSON() {
+        let textAppearanceOrder = [];
+        let carouselUsedProjects = [];
+
+        // STRICT LOGIC: Pass 1 scans for text mentions to establish the true order of appearance
+        this.blocks.forEach(b => {
+          let textRaw = b.textRaw || "";
+          if (textRaw) {
+            let found = [];
+            this.projects.forEach(p => { 
+              if (p.title && textRaw.includes(p.title)) {
+                found.push({ id: p.id, index: textRaw.indexOf(p.title) }); 
+              }
+            });
+            found.sort((a,b) => a.index - b.index);
+            found.forEach(f => { 
+              if (!textAppearanceOrder.includes(f.id)) textAppearanceOrder.push(f.id); 
+            });
+          }
+
+          // Pass 2 collects assigned images to ensure nothing breaks if a project isn't mentioned
+          if (b.type === 'independent-carousel' && b.projectId) {
+             if (!carouselUsedProjects.includes(b.projectId)) carouselUsedProjects.push(b.projectId);
+          }
+          if (b.type === 'visual-layout') {
+             if (b.proj1Id && !carouselUsedProjects.includes(b.proj1Id)) carouselUsedProjects.push(b.proj1Id);
+             if (b.proj2Id && !carouselUsedProjects.includes(b.proj2Id)) carouselUsedProjects.push(b.proj2Id);
+          }
+        });
+
+        // The master order strictly places text mentions first
+        let appearanceOrder = [...textAppearanceOrder];
+        carouselUsedProjects.forEach(id => {
+          if (!appearanceOrder.includes(id)) appearanceOrder.push(id);
+        });
+
+        let exportedProjects = [];
+        appearanceOrder.forEach(projId => {
+          const p = this.projects.find(proj => proj.id === projId);
+          if (p) exportedProjects.push(p);
+        });
+
+        this.projects.forEach(p => {
+          if (!appearanceOrder.includes(p.id)) {
+            exportedProjects.push(p);
+          }
+        });
+
+        let validIndexCounter = 1;
+        const projectIndex = exportedProjects.map((p) => {
+          return {
+            id: p.id, 
+            number: appearanceOrder.includes(p.id) ? `[${String(validIndexCounter++).padStart(2, '0')}]` : '',
+            title: p.title, folder: p.folder,
+            images: (p.images||'').split(',').map(s => s.trim()).filter(Boolean).map(img => `Images/${p.folder}/${img}`),
+            clients: p.clients || [], location: p.location, year: p.year, status: p.status, exhibition: p.exhibition || '',
+            domains: p.domains || [], typologies: p.typologies || [], services: p.services || [],
+            partners: p.partners || '', asPartOf: p.asPartOf || '', asPartOfUrl: p.asPartOfUrl || '', projectTeam: p.projectTeam || '',
+            collaborators: p.collaborators || '', participation: p.participation || '', recognition: p.recognition || ''
+          }
+        });
+
+        const parsedBlocks = this.blocks.map((b, bIdx) => {
+          let blockData = { id: `block-${Date.now()}-${bIdx}`, type: b.type, spacerBelow: b.spacerBelow };
+          if (['kicker', 'headline', 'typology', 'typology-standstill'].includes(b.type)) { blockData.text = b.textRaw; } 
+          else if (b.type === 'hero-image' || b.type === 'hero-video') {
+             blockData.span = parseFloat(b.span) || 3; blockData.startCol = parseFloat(b.startCol) || 1;
+             if(b.type === 'hero-image') blockData.image = b.image || "";
+             else { blockData.videoUrl = b.videoUrl || ""; blockData.embedCode = b.embedCode || ""; }
+          }
+          else if (b.type === 'independent-text') {
+             blockData.span = parseFloat(b.span) || 2; blockData.startCol = parseFloat(b.startCol) || 1; blockData.colCount = parseInt(b.colCount) || (blockData.span >= 2 ? 2 : 1);
+             let raw = b.textRaw || ""; let detected = this.getDetectedProjects(raw);
+             detected.forEach(p => { if(!p.title) return; raw = raw.replace(new RegExp(`\\b${p.title}\\b`, 'g'), `<strong class='project-trigger' data-id='${p.id}'>${p.title}</strong>`); });
+             if (detected.length > 0) blockData.primaryProject = detected[0].id;
+             blockData.text = raw.split('\n\n').filter(x => x.trim() !== '');
+          }
+          else if (b.type === 'independent-carousel') {
+             blockData.span = parseFloat(b.span) || 3; blockData.startCol = parseFloat(b.startCol) || 1;
+             blockData.marginTop = parseFloat(b.marginTop) || 0; blockData.marginBottom = parseFloat(b.marginBottom) || 0;
+             if(b.projectId) {
+                const p = projectIndex.find(pi => pi.id === b.projectId);
+                if(p) { 
+                    blockData.primaryProject = p.id; 
+                    blockData.projectId = b.projectId; 
+                    blockData.tag = p.number; 
+                    blockData.images = p.images; 
+                }
+             } else if (b.folder && b.customImages) {
+                blockData.folder = b.folder;
+                blockData.customImages = b.customImages;
+                blockData.images = b.customImages.split(',').map(s => s.trim()).filter(Boolean).map(img => `Images/${b.folder}/${img}`);
+             } else if (b.customImages) {
+                blockData.customImages = b.customImages;
+                blockData.images = b.customImages.split(',').map(s => s.trim()).filter(Boolean);
+             }
+          }
+          else if (b.type === 'visual-layout') {
+             blockData.template = b.layout;
+             blockData.textStartCol = parseFloat(b.textStartCol) || 1;
+             
+             let rawText = b.textRaw || ""; let detected = this.getDetectedProjects(rawText);
+             detected.forEach(p => { if(!p.title) return; rawText = rawText.replace(new RegExp(`\\b${p.title}\\b`, 'g'), `<strong class='project-trigger' data-id='${p.id}'>${p.title}</strong>`); });
+             if (detected.length > 0) blockData.primaryProject = detected[0].id;
+             blockData.text = rawText.split('\n\n').filter(x => x.trim() !== '');
+
+             blockData.img1ExtTop = parseFloat(b.img1ExtTop) || 0; blockData.img1ExtBot = parseFloat(b.img1ExtBot) || 0;
+             blockData.img2ExtTop = parseFloat(b.img2ExtTop) || 0; blockData.img2ExtBot = parseFloat(b.img2ExtBot) || 0;
+             
+             if(b.proj1Id) { 
+                 const p1 = projectIndex.find(pi => pi.id === b.proj1Id); 
+                 if(p1) { 
+                     if (!blockData.primaryProject) blockData.primaryProject = p1.id; 
+                     blockData.proj1Id = b.proj1Id;
+                     blockData.img1Tag = p1.number; 
+                     blockData.img1Data = p1.images; 
+                 } 
+             }
+             if(b.proj2Id) { 
+                 const p2 = projectIndex.find(pi => pi.id === b.proj2Id); 
+                 if(p2) { 
+                     if (!blockData.primaryProject) blockData.primaryProject = p2.id; 
+                     blockData.proj2Id = b.proj2Id;
+                     blockData.img2Tag = p2.number; 
+                     blockData.img2Data = p2.images; 
+                 } 
+             }
+          }
+          return blockData;
+        });
+
+        const finalObj = { navigation: [{ label: "ABOUT", link: "#about" }, { label: "SERVICES", link: "services.html" }, { label: "PROJECTS", link: "#content-feed", active: true }, { label: "CONTACT", link: "#contact" }], projectIndex: projectIndex, blocks: parsedBlocks };
+        return `const SITE_CONTENT = ${JSON.stringify(finalObj, null, 2)};`;
+      }
+    },
+    methods: {
+      resetBuilder() {
+        if(confirm("Are you sure you want to clear the builder?")) {
+          this.projects = [];
+          this.blocks = [];
+          this.fileHandle = null;
+          this.currentFileName = '';
+        }
+      },
+      availableDomains(proj) { return MASTER_DOMAINS.filter(d => !proj.domains.includes(d)); },
+      availableTypologies(proj) { return MASTER_TYPOLOGIES.filter(t => !proj.typologies.includes(t)); },
+      availableServices(proj) { return MASTER_SERVICES.filter(s => !proj.services.includes(s)); },
+      moveUp(arr, idx) { if(idx > 0) { const temp = arr[idx]; arr[idx] = arr[idx-1]; arr[idx-1] = temp; } },
+      moveDown(arr, idx) { if(idx < arr.length-1) { const temp = arr[idx]; arr[idx] = arr[idx+1]; arr[idx+1] = temp; } },
+      
+      addDomain(proj, dom) {
+        if (!proj.domains.includes(dom)) {
+          proj.domains.push(dom);
+        }
+        // If a typology is already selected, pull in this domain's specific services
+        proj.typologies.forEach(typ => {
+          if (matrixData[typ] && matrixData[typ][dom]) {
+            matrixData[typ][dom].forEach(srv => {
+              if (!proj.services.includes(srv)) {
+                proj.services.push(srv);
+              }
+            });
+          }
+        });
+      },
+      addTypology(proj, typ) { 
+        if (!proj.typologies.includes(typ)) {
+          proj.typologies.push(typ); 
+        }
+        // Only pull in services that match the ALREADY selected domains for this project
+        if (matrixData[typ]) {
+          proj.domains.forEach(dom => {
+            if (matrixData[typ][dom]) {
+              matrixData[typ][dom].forEach(srv => {
+                if (!proj.services.includes(srv)) {
+                  proj.services.push(srv);
+                }
+              });
+            }
+          });
+        }
+      },
+      
+      formatProjectData(p) {
+        let mappedClients = [{name: '', url: ''}]; if (Array.isArray(p.clients) && p.clients.length > 0) { mappedClients = p.clients; }
+        return {
+          id: p.id || 'proj-' + Date.now() + Math.random(), title: p.title || '', folder: p.folder || '', images: Array.isArray(p.images) ? p.images.map(img => img.split('/').pop()).join(', ') : (p.images || ''), clients: mappedClients, location: p.location || '', year: p.year || '', status: p.status || '', exhibition: p.exhibition || '', domains: p.domains || [], typologies: p.typologies || [], services: p.services || [], partners: p.partners || '', asPartOf: p.asPartOf || '', asPartOfUrl: p.asPartOfUrl || '', projectTeam: p.projectTeam || '', collaborators: p.collaborators || '', participation: p.participation || '', recognition: p.recognition || ''
+        };
+      },
+
+      getValidLayouts(text) {
+        const c = this.getDetectedProjects(text).length;
+        const all = [
+          { id: 'diag-a', name: 'Diagonal A: [L Span 2] Text/Img | [R Span 1] Img/Text', imgCount: 2 }, { id: 'diag-b', name: 'Diagonal B: [L Span 1] Text/Img | [R Span 2] Img/Text', imgCount: 2 }, { id: 'diag-c', name: 'Diagonal C: [L Span 1] Img/Text | [R Span 2] Text/Img', imgCount: 2 }, { id: 'diag-d', name: 'Diagonal D: [L Span 2] Img/Text | [R Span 1] Text/Img', imgCount: 2 },
+          { id: 'side-img-text', name: 'Side-by-Side: [Col 1] Img | [Col 2-3] Text', imgCount: 1 }, { id: 'side-img1-text1', name: 'Side-by-Side: [Col 1] Img | [Col 2] Text', imgCount: 1 }, { id: 'side-text-img1', name: 'Side-by-Side: [Col 1] Text | [Col 2] Img', imgCount: 1 }, { id: 'side-text-img2', name: 'Side-by-Side: [Col 1] Text | [Col 2-3] Img', imgCount: 1 }
+        ];
+        if (c === 0) return []; return all.filter(l => l.imgCount <= c);
+      },
+      dragStart(index, event) { this.draggedIndex = index; event.dataTransfer.effectAllowed = 'move'; },
+      dragEnd() { this.draggedIndex = null; },
+      dropBlock(index) { if (this.draggedIndex !== null && this.draggedIndex !== index) { const movedItem = this.blocks.splice(this.draggedIndex, 1)[0]; this.blocks.splice(index, 0, movedItem); } this.draggedIndex = null; },
+      exportNewFile() { const blob = new Blob([this.generatedJSON], { type: 'text/javascript' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = this.currentFileName || 'content_projects.js'; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href); },
+      async importFromFile() {
+        try {
+          const [fileHandle] = await window.showOpenFilePicker({ types: [{ description: 'JavaScript Files', accept: { 'text/javascript': ['.js'] } }], multiple: false });
+          this.fileHandle = fileHandle; this.currentFileName = fileHandle.name; const file = await fileHandle.getFile(); const text = await file.text();
+          try {
+            const jsonString = text.replace('const SITE_CONTENT = ', '').replace(/;$/, '').trim(); const data = JSON.parse(jsonString);
+            if (data.projectIndex) this.projects = data.projectIndex.map(p => this.formatProjectData(p));
+            if (data.blocks) {
+              this.blocks = data.blocks.map(b => {
+                let uiBlock = { id: b.id, type: b.type, spacerBelow: b.spacerBelow !== undefined ? b.spacerBelow : 2 };
+                if (['kicker', 'headline', 'typology', 'typology-standstill'].includes(b.type)) { uiBlock.textRaw = b.text || ""; } 
+                else if (['hero-image', 'hero-video'].includes(b.type)) { uiBlock.image = b.image || ""; uiBlock.videoUrl = b.videoUrl || ""; uiBlock.embedCode = b.embedCode || ""; uiBlock.span = b.span || 3; uiBlock.startCol = b.startCol || 1; }
+                else if (b.type === 'independent-text') { uiBlock.textRaw = (b.text || []).join('\n\n').replace(/<strong class='project-trigger' data-id='[^']+'>/g, '').replace(/<\/strong>/g, ''); uiBlock.span = parseFloat(b.span) || 2; uiBlock.startCol = parseFloat(b.startCol) || 1; uiBlock.colCount = b.colCount || 2; }
+                else if (b.type === 'independent-carousel') { 
+                    uiBlock.span = parseFloat(b.span) || 3; uiBlock.startCol = parseFloat(b.startCol) || 1; 
+                    uiBlock.marginTop = b.marginTop || 0; uiBlock.marginBottom = b.marginBottom || 0; 
+                    if (b.projectId) { 
+                        uiBlock.projectId = b.projectId; 
+                    } else if (b.folder && b.customImages) { 
+                        uiBlock.folder = b.folder; 
+                        uiBlock.customImages = b.customImages; 
+                    } else if (b.images && b.images.length > 0) {
+                        uiBlock.customImages = b.images.join(', ');
+                    }
+                }
+                else if (b.type === 'visual-layout') {
+                   uiBlock.layout = b.template || ''; uiBlock.textStartCol = parseFloat(b.textStartCol) || 1;
+                   uiBlock.textRaw = (b.text || []).join('\n\n').replace(/<strong class='project-trigger' data-id='[^']+'>/g, '').replace(/<\/strong>/g, '');
+                   uiBlock.img1ExtTop = b.img1ExtTop || 0; uiBlock.img1ExtBot = b.img1ExtBot || 0; uiBlock.img2ExtTop = b.img2ExtTop || 0; uiBlock.img2ExtBot = b.img2ExtBot || 0;
+                   if (b.proj1Id) uiBlock.proj1Id = b.proj1Id;
+                   if (b.proj2Id) uiBlock.proj2Id = b.proj2Id;
+                } return uiBlock;
+              });
+            }
+          } catch (e) { alert("Could not parse file."); }
+        } catch (e) { if (e.name !== 'AbortError') console.error(e); }
+      },
+      async saveFile() { try { if (!this.fileHandle) return; const writable = await this.fileHandle.createWritable(); await writable.write(this.generatedJSON); await writable.close(); alert(`${this.currentFileName} updated successfully!`); } catch (error) { if(error.name !== 'AbortError') alert("File saving failed."); } },
+      addClient(proj) { proj.clients.push({name: '', url: ''}); }, removeClient(proj, cIdx) { proj.clients.splice(cIdx, 1); },
+      syncImages(event) {
+        const files = event.target.files;
+        this.projects.forEach(p => {
+          if(!p.folder) return; let matchedFiles = [];
+          for(let i=0; i<files.length; i++) {
+            let path = files[i].webkitRelativePath || files[i].name;
+            if (path.includes(`/${p.folder}/`) || path.startsWith(`${p.folder}/`)) { if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) { let fName = files[i].name; if(!matchedFiles.includes(fName)) matchedFiles.push(fName); } }
+          }
+          if(matchedFiles.length > 0) { matchedFiles.sort((a,b) => a.localeCompare(b, undefined, {numeric: true})); p.images = matchedFiles.join(', '); }
+        }); alert("Image sync completed successfully!");
+      },
+      addProject() { this.projects.push(this.formatProjectData({})); this.activeProject = this.projects.length - 1; }, removeProject(idx) { this.projects.splice(idx, 1); },
+      addBlockAt(index, type) {
+        const newBlock = { id: Date.now() + Math.random(), type: type, spacerBelow: 2, textRaw: '' };
+        if (type === 'visual-layout') { newBlock.layout = ''; newBlock.textStartCol = 1; newBlock.img1ExtTop = 0; newBlock.img1ExtBot = 0; newBlock.img2ExtTop = 0; newBlock.img2ExtBot = 0; }
+        if (type === 'independent-carousel') { newBlock.span = 3; newBlock.startCol = 1; newBlock.marginTop = 0; newBlock.marginBottom = 0; newBlock.folder = ''; newBlock.customImages = ''; }
+        if (type === 'independent-text') { newBlock.span = 2; newBlock.startCol = 1; newBlock.colCount = 2; }
+        if (['hero-image', 'hero-video'].includes(type)) { newBlock.span = 3; newBlock.startCol = 1; }
+        this.blocks.splice(index, 0, newBlock);
+      },
+      removeBlock(idx) { this.blocks.splice(idx, 1); }, getDetectedProjects(text) { if(!text) return []; return this.projects.filter(p => p.title && new RegExp(`\\b${p.title}\\b`).test(text)); },
+      onBlockTypeChange(block) {
+        if (block.type === 'visual-layout') {
+          if (block.layout === undefined) block.layout = '';
+          if (block.textStartCol === undefined) block.textStartCol = 1;
+          if (block.img1ExtTop === undefined) block.img1ExtTop = 0;
+          if (block.img1ExtBot === undefined) block.img1ExtBot = 0;
+          if (block.img2ExtTop === undefined) block.img2ExtTop = 0;
+          if (block.img2ExtBot === undefined) block.img2ExtBot = 0;
+        }
+        if (block.type === 'independent-carousel') {
+          if (block.span === undefined) block.span = 3;
+          if (block.startCol === undefined) block.startCol = 1;
+          if (block.marginTop === undefined) block.marginTop = 0;
+          if (block.marginBottom === undefined) block.marginBottom = 0;
+          if (block.folder === undefined) block.folder = '';
+          if (block.customImages === undefined) block.customImages = '';
+        }
+        if (block.type === 'independent-text') {
+          if (block.span === undefined) block.span = 2;
+          if (block.startCol === undefined) block.startCol = 1;
+          if (block.colCount === undefined) block.colCount = 2;
+        }
+        if (['hero-image', 'hero-video'].includes(block.type)) {
+          if (block.span === undefined) block.span = 3;
+          if (block.startCol === undefined) block.startCol = 1;
+        }
+      }
+    }
+  }).mount('#app')
+</script>
+</body>
+</html>
